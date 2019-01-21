@@ -11,6 +11,7 @@ var bcrypt = require('bcryptjs');
 const saltRounds = 10;
 const fileupload = require("express-fileupload");
 const mkdirp = require('mkdirp');
+const md5 = require("md5");
 
 
 //pakai middleware
@@ -31,42 +32,113 @@ userRouter.get("/users", (req, res) => {
 });
 
 userRouter.get("/users/:id", (req, res) => {
-    let id = req.params.id;
-    let sql = "SELECT * FROM users WHERE id = ? ;";
-    let query = db.query(sql, id, (err, result) => {
-        if (err) throw err;
-        console.log(result);
+    let id_user = req.params.id; //kenapa ini id bukan id_user karena parameter yg ditrima itu :id walau yg dikirim dr front end id_user
+    let sql = `SELECT * FROM users WHERE id = ${id_user} ;`;
+    let query = db.query(sql, (err, result) => {
+        if (err) {
+            throw err;
+        }
+        else {
+            res.send(result);
+        }
         // res.send(`User with id: ${id} successfully fetched!`);
-        res.send(result);
+
     });
 });
 
+//saat di refresh / login, buat session user
+userRouter.post("/session", (req, res) => {
+    let user_session = req.body.user_session;
+    let sql = `SELECT * FROM sessions WHERE session_token = '${user_session}'`;
+    let query = db.query(sql, (err, result) => {
+        if (err) {
+            throw err;
+        }
+        else {
+            res.send(result);
+            console.log(result);
+        }
+    });
+});
+
+//logout hapus session user
+userRouter.delete('/session/:id_user', (req, res) => {
+    let id_user = req.params.id_user;
+    let sql = `DELETE FROM sessions WHERE id_user = ${id_user}`;
+    let query = db.query(sql, (err, result) => {
+        console.log("Log out sukses!");
+    });
+});
+
+
+
+// fungsi untuk hash session token user dan dimasukin ke db
+// createSession = (res, result) => {
+//     // algoritma untuk hash session token user
+//     let date = new Date();
+//     let time = date.getHours() + "-" + date.getMinutes() + "-" + date.getSeconds();
+//     let id_user = result[0].id;
+//     let stringSession = id_user + "-" + time;
+//     console.log(stringSession)
+//     let session_token = md5(stringSession);
+//     let session = {
+//         id_user: result[0].id,
+//         session_token: session_token
+//     }
+//     let sql = `INSERT INTO sessions SET ?`;
+//     let query = db.query(sql, session, (err, resultSession) => {
+//         if (err) {
+//             throw err;
+//         }
+//         else {
+//             console.log("Data session sukses masuk!");
+//             res.send(session.session_token);
+//         }
+//     });
+//     // sampai sini
+// }
+
 userRouter.post("/login", (req, res) => {
-    console.log(req.method)
     let username = req.body.username;
     let password = req.body.password;
     let sql = `SELECT * FROM users WHERE username = '${username}'`;
     let query = db.query(sql, (err, result) => {
+        console.log(result)
         if (err) {
             throw err;
         }
         else if (result.length > 0) {
             bcrypt.compare(password, result[0].password, (err, checkPass) => {
-                console.log(checkPass);
                 if (checkPass == true) {
-                    res.send(result);
+                    // createSession(res, result);
+                    // res.send(result);
+                    // algoritma untuk hash session token user
+                    let date = new Date();
+                    let time = date.getHours() + "-" + date.getMinutes() + "-" + date.getSeconds();
+                    let id_user = result[0].id;
+                    let stringSession = id_user + "-" + time;
+                    console.log(stringSession)
+                    let session_token = md5(stringSession);
+                    let session = {
+                        id_user: result[0].id,
+                        session_token: session_token
+                    }
+                    let sql = `INSERT INTO sessions SET ?`;
+                    let query = db.query(sql, session, (err, resultSession) => {
+                        if (err) {
+                            throw err;
+                        }
+                        else {
+                            console.log("Data session sukses masuk!");
+                            res.send(session.session_token);
+                        }
+                    });
+                    // sampai sini
                 }
                 else {
                     res.send({ "status": "wrongPassword" });
                 }
             });
-            // if (password != result[0].password) {
-            //     res.send({ "status": "wrongPassword" });
-            // }
-            // else {
-            //     // res.send({ "status": "loginSuccess" });
-            //     res.send(result);
-            // }
         }
         else {
             res.send({ "status": "notRegistered" });
@@ -91,12 +163,40 @@ userRouter.post("/users", (req, res) => {
         }
         else {
             bcrypt.hash(password, saltRounds, (err, hash) => {
-                let query = db.query(`INSERT INTO users (username, password) VALUES (?, ?)`, [username, hash], (err, result) => {
+                let query = db.query(`INSERT INTO users (username, password) VALUES (?, ?)`, [username, hash], (err, resultt) => {
                     if (err) {
                         throw err;
                     }
                     // res.send({ "status": "signUpSuccess" });
-                    res.send(result);
+                    // createSession(res, result);
+                    // res.send(result);
+                    console.log(resultt.insertId)
+
+                    // algoritma untuk hash session token user
+                    let date = new Date();
+                    let time = date.getHours() + "-" + date.getMinutes() + "-" + date.getSeconds();
+                    // let id_user = result[0].id;
+                    let id_user = resultt.insertId;
+                    let stringSession = id_user + "-" + time;
+                    console.log(stringSession)
+                    let session_token = md5(stringSession);
+                    let session = {
+                        id_user: id_user,
+                        session_token: session_token
+                    }
+                    let sql = `INSERT INTO sessions SET ?`;
+                    let query = db.query(sql, session, (err, resultSession) => {
+                        if (err) {
+                            throw err;
+                        }
+                        else {
+                            console.log("Data session sukses masuk!");
+                            res.send(session);
+                        }
+                    });
+                    // sampai sini
+
+
                 });
             })
         }
@@ -131,6 +231,8 @@ userRouter.delete("/users/:id", (req, res) => {
 
 //upload Profile Picture
 userRouter.post('/upload', (req, res) => {
+    console.log("upload file jalan")
+    console.log(req.body)
     //kalau ada data nya, masukin; kalau gaada, default di database udh ada profpict.png
     if (req.files) {
         var userid = req.body.userid;
@@ -158,6 +260,7 @@ userRouter.post('/upload', (req, res) => {
             }
         });
     }
-})
+});
+
 
 module.exports = userRouter;
